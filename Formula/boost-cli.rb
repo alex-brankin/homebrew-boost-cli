@@ -7,16 +7,16 @@ class BoostCli < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/alex-brankin/homebrew-boost-cli/raw/main/releases/v1.0.0/boost-cli-macos-arm64"
-      sha256 "9bb53075fcd11a75215a8e2239dd87d97f7a617a05cac3b78e6f2a4219eed687"
+      sha256 "975875bab64fbab1490cf651136ec88eccda2d3c7a49cc83b8466ecd9ab568c1"
     else
       url "https://github.com/alex-brankin/homebrew-boost-cli/raw/main/releases/v1.0.0/boost-cli-macos-x64"
-      sha256 "2128471f2d98e1a944ce7c1dc48da10d966a9d53fead8410f9f99d7efc24e191"
+      sha256 "136effdd1eecd411c6e62c847287515f1bf96e230046029007dd61dc913a684c"
     end
   end
 
   on_linux do
     url "https://github.com/alex-brankin/homebrew-boost-cli/raw/main/releases/v1.0.0/boost-cli-linux-x64"
-    sha256 "4ad07f3e334db61f7e8528c0fa387f5343ffba5c03833ddc4f155c7d44a187de"
+    sha256 "580ec06a4f95444e0e7cd6fdb6ae08d336a8fe376dcba8e7fa66f5aa98aaab2a"
   end
 
   def install
