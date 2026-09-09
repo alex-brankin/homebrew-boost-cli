@@ -80,19 +80,27 @@ BASE_URL="https://github.com/$TAP_REPO/releases/download/$TAG"
 
 echo ""
 echo "🔐 Verifying checksums against the PUBLISHED assets"
-declare -A SHA
-for f in "${BINARIES[@]}"; do
+
+# macOS ships bash 3.2, which has no associative arrays (`declare -A`), so the
+# three checksums are plain variables. Do not "tidy" this into a hash.
+verify_asset() {
+  local f="$1"
+  local local_sha remote_sha
   local_sha=$(shasum -a 256 "$STAGING/$f" | cut -d' ' -f1)
   remote_sha=$(curl -fsSL "$BASE_URL/$f" | shasum -a 256 | cut -d' ' -f1)
-  if [ "$local_sha" != "$remote_sha" ]; then
-    echo "❌ $f: upload does not match local file"
-    echo "     local  $local_sha"
-    echo "     remote $remote_sha"
+  if [ -z "$remote_sha" ] || [ "$local_sha" != "$remote_sha" ]; then
+    echo "❌ $f: published asset does not match the local file" >&2
+    echo "     local  $local_sha" >&2
+    echo "     remote ${remote_sha:-<download failed>}" >&2
     exit 1
   fi
-  SHA[$f]=$remote_sha
-  echo "   ✓ $f  ${remote_sha:0:16}…"
-done
+  echo "   ✓ $f  ${remote_sha:0:16}…" >&2
+  printf '%s' "$remote_sha"
+}
+
+ARM64_SHA=$(verify_asset boost-cli-macos-arm64)
+X64_SHA=$(verify_asset boost-cli-macos-x64)
+LINUX_SHA=$(verify_asset boost-cli-linux-x64)
 
 cat > "$FORMULA" <<FORMULA_EOF
 class BoostCli < Formula
@@ -104,16 +112,16 @@ class BoostCli < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "$BASE_URL/boost-cli-macos-arm64"
-      sha256 "${SHA[boost-cli-macos-arm64]}"
+      sha256 "$ARM64_SHA"
     else
       url "$BASE_URL/boost-cli-macos-x64"
-      sha256 "${SHA[boost-cli-macos-x64]}"
+      sha256 "$X64_SHA"
     end
   end
 
   on_linux do
     url "$BASE_URL/boost-cli-linux-x64"
-    sha256 "${SHA[boost-cli-linux-x64]}"
+    sha256 "$LINUX_SHA"
   end
 
   def install
