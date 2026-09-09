@@ -1,0 +1,4 @@
+# Release binaries are published as GitHub release assets, not committed.
+# Each release is ~200MB and git keeps every byte forever.
+.release-staging/
+releases/
