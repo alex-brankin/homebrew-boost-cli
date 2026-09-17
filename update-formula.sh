@@ -64,43 +64,75 @@ mkdir -p "$STAGING"
 for f in "${BINARIES[@]}"; do cp "$DIST/$f" "$STAGING/"; done
 [ -f "$DIST/boost-cli-win-x64.exe" ] && cp "$DIST/boost-cli-win-x64.exe" "$STAGING/"
 
-echo ""
-echo "☁️  Publishing release assets to $TAP_REPO@$TAG"
-if gh release view "$TAG" --repo "$TAP_REPO" >/dev/null 2>&1; then
-  echo "   release exists - replacing assets"
-  gh release upload "$TAG" "$STAGING"/* --repo "$TAP_REPO" --clobber
-else
-  gh release create "$TAG" "$STAGING"/* \
-    --repo "$TAP_REPO" \
-    --title "boost-cli $VERSION" \
-    --notes "Homebrew: \`brew update && brew upgrade boost-cli\`"
-fi
-
 BASE_URL="https://github.com/$TAP_REPO/releases/download/$TAG"
 
 echo ""
-echo "🔐 Verifying checksums against the PUBLISHED assets"
+echo "☁️  Publishing to $TAP_REPO@$TAG"
 
-# macOS ships bash 3.2, which has no associative arrays (`declare -A`), so the
-# three checksums are plain variables. Do not "tidy" this into a hash.
-verify_asset() {
+RELEASE_EXISTS=0
+gh release view "$TAG" --repo "$TAP_REPO" >/dev/null 2>&1 && RELEASE_EXISTS=1
+
+if [ "$RELEASE_EXISTS" = "0" ]; then
+  gh release create "$TAG" --repo "$TAP_REPO" \
+    --title "boost-cli $VERSION" \
+    --notes "Homebrew: \`brew update && brew upgrade boost-cli\`" >/dev/null
+  echo "   created release $TAG"
+else
+  echo "   release exists"
+fi
+
+# Upload only what is actually missing or different.
+#
+# `gh release upload --clobber` re-pushes every asset unconditionally. That is
+# ~215MB across four targets, and a re-run after an interruption re-sends all of
+# it to replace bytes that are already correct - a release retry took over 20
+# minutes doing nothing useful.
+#
+# The download below is NOT the waste: the formula's checksums must come from
+# the asset as GitHub serves it, so it has to be fetched regardless. Verifying
+# first and uploading only on a mismatch removes the redundant upload while
+# keeping the byte-level check that catches a truncated upload.
+sync_asset() {
   local f="$1"
   local local_sha remote_sha
   local_sha=$(shasum -a 256 "$STAGING/$f" | cut -d' ' -f1)
-  remote_sha=$(curl -fsSL "$BASE_URL/$f" | shasum -a 256 | cut -d' ' -f1)
-  if [ -z "$remote_sha" ] || [ "$local_sha" != "$remote_sha" ]; then
-    echo "❌ $f: published asset does not match the local file" >&2
-    echo "     local  $local_sha" >&2
-    echo "     remote ${remote_sha:-<download failed>}" >&2
-    exit 1
+  remote_sha=$(curl -fsSL "$BASE_URL/$f" 2>/dev/null | shasum -a 256 | cut -d' ' -f1 || true)
+
+  if [ "$local_sha" = "$remote_sha" ]; then
+    echo "   = $f  already published, unchanged" >&2
+  else
+    echo "   ↑ $f  uploading…" >&2
+    gh release upload "$TAG" "$STAGING/$f" --repo "$TAP_REPO" --clobber >/dev/null
+
+    # GitHub reports state=uploaded before the download URL actually serves the
+    # asset - verifying immediately gets a 404, whose sha256 is the hash of an
+    # empty string (e3b0c442…). Retry with backoff rather than failing a release
+    # over propagation lag.
+    remote_sha=""
+    for attempt in 1 2 3 4 5 6; do
+      remote_sha=$(curl -fsSL "$BASE_URL/$f" 2>/dev/null | shasum -a 256 | cut -d' ' -f1 || true)
+      [ "$local_sha" = "$remote_sha" ] && break
+      echo "   … $f  not served yet (attempt $attempt), waiting" >&2
+      sleep $((attempt * 10))
+    done
+
+    if [ "$local_sha" != "$remote_sha" ]; then
+      echo "❌ $f: published asset does not match the local file after upload" >&2
+      echo "     local  $local_sha" >&2
+      echo "     remote ${remote_sha:-<download failed>}" >&2
+      exit 1
+    fi
+    echo "   ✓ $f  uploaded and verified" >&2
   fi
-  echo "   ✓ $f  ${remote_sha:0:16}…" >&2
-  printf '%s' "$remote_sha"
+
+  printf '%s' "$local_sha"
 }
 
-ARM64_SHA=$(verify_asset boost-cli-macos-arm64)
-X64_SHA=$(verify_asset boost-cli-macos-x64)
-LINUX_SHA=$(verify_asset boost-cli-linux-x64)
+# macOS ships bash 3.2 - no associative arrays. Do not "tidy" into a hash.
+ARM64_SHA=$(sync_asset boost-cli-macos-arm64)
+X64_SHA=$(sync_asset boost-cli-macos-x64)
+LINUX_SHA=$(sync_asset boost-cli-linux-x64)
+[ -f "$STAGING/boost-cli-win-x64.exe" ] && sync_asset boost-cli-win-x64.exe >/dev/null
 
 cat > "$FORMULA" <<FORMULA_EOF
 class BoostCli < Formula
