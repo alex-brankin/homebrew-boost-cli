@@ -1,0 +1,60 @@
+# What users run: brew install, on macOS and Linux, and the formula's own
+# test. Nothing did this automatically - the CLI repo's nightly checks the
+# assets' checksums but never installs, and release day's brew upgrade was a
+# manual check on one Mac. This repo is public, so these minutes are free.
+name: Install
+
+on:
+  push:
+    branches: [main]
+    paths: ['Formula/**', '.github/workflows/install.yml']
+  schedule:
+    - cron: '45 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: brew install on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install from this checkout, as a tap
+        run: |
+          set -euo pipefail
+          if [ -x /home/linuxbrew/.linuxbrew/bin/brew ]; then eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"; fi
+          brew tap alex-brankin/boost-cli "$GITHUB_WORKSPACE"
+          brew install alex-brankin/boost-cli/boost-cli
+          brew test alex-brankin/boost-cli/boost-cli
+          want=$(sed -n 's/^  version "\(.*\)"/\1/p' Formula/boost-cli.rb)
+          got=$(boost-cli --version)
+          [ "$got" = "$want" ] || { echo "installed boost-cli says $got, formula says $want"; exit 1; }
+          boost-cli --help | grep -q "verify" || { echo "installed binary does not list its commands"; exit 1; }
+          echo "installed boost-cli $got"
+
+  tell-someone:
+    name: Open an issue when a scheduled install fails
+    needs: [install]
+    if: always() && github.event_name == 'schedule' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="brew install failed"
+          existing=$(gh issue list -R "$REPO" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then gh issue comment "$existing" -R "$REPO" --body "$RUN"
+          else gh issue create -R "$REPO" --title "$title" --body "$RUN"; fi
