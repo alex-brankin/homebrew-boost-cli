@@ -57,6 +57,15 @@ if [ "$BUILT_VERSION" != "$VERSION" ]; then
 fi
 echo "✅ Binaries report version $BUILT_VERSION"
 
+# Only binaries that passed release:check IN FULL, unchanged since. The
+# version check above is not enough: it passed binaries that never went
+# through the gates. release:check writes dist/release-check-pass.json with
+# each binary's sha256 on a full pass (boost-sync-cli/scripts/lib/release-stamp.js).
+PUBLISH=()
+for f in "${BINARIES[@]}"; do PUBLISH+=("$DIST/$f"); done
+[ -f "$DIST/boost-cli-win-x64.exe" ] && PUBLISH+=("$DIST/boost-cli-win-x64.exe")
+node "$SCRIPT_DIR/../boost-sync-cli/scripts/check-release-stamp.js" "$VERSION" "${PUBLISH[@]}" || exit 1
+
 echo ""
 echo "📁 Staging"
 rm -rf "$STAGING"
