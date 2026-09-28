@@ -66,6 +66,19 @@ for f in "${BINARIES[@]}"; do PUBLISH+=("$DIST/$f"); done
 [ -f "$DIST/boost-cli-win-x64.exe" ] && PUBLISH+=("$DIST/boost-cli-win-x64.exe")
 node "$SCRIPT_DIR/../boost-sync-cli/scripts/check-release-stamp.js" "$VERSION" "${PUBLISH[@]}" || exit 1
 
+# The commit release:check passed - the one these binaries were built from.
+# NOT the "chore: release" commit: 1.17.11's bump was b44c8b2 while its
+# binaries came from 836e611, several commits later.
+CLI_REPO="$SCRIPT_DIR/../boost-sync-cli"
+COMMIT=$(node -p "require('$DIST/release-check-pass.json').commit")
+PREV_TAG=$(git -C "$CLI_REPO" describe --tags --abbrev=0 --match 'v*' "$COMMIT^" 2>/dev/null || true)
+NOTES_FILE=$(mktemp)
+if [ -n "$PREV_TAG" ]; then
+  node "$CLI_REPO/scripts/release-notes.js" "$PREV_TAG" "$COMMIT" "$VERSION" > "$NOTES_FILE"
+else
+  printf 'boost-cli %s\n\nUpgrade: brew update && brew upgrade boost-cli\n' "$VERSION" > "$NOTES_FILE"
+fi
+
 echo ""
 echo "📁 Staging"
 rm -rf "$STAGING"
@@ -84,7 +97,7 @@ gh release view "$TAG" --repo "$TAP_REPO" >/dev/null 2>&1 && RELEASE_EXISTS=1
 if [ "$RELEASE_EXISTS" = "0" ]; then
   gh release create "$TAG" --repo "$TAP_REPO" \
     --title "boost-cli $VERSION" \
-    --notes "Homebrew: \`brew update && brew upgrade boost-cli\`" >/dev/null
+    --notes-file "$NOTES_FILE" >/dev/null
   echo "   created release $TAG"
 else
   echo "   release exists"
@@ -187,6 +200,20 @@ rm -rf "$STAGING"
 
 echo ""
 echo "✅ Formula regenerated for $TAG, pointing at release assets"
+
+# Tag the CLI repo at the commit that shipped, so the last good release is one
+# ref away when a roll-forward is needed (CLAUDE.md, "Undoing a bad release").
+if EXISTING=$(git -C "$CLI_REPO" rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null); then
+  if [ "$EXISTING" != "$COMMIT" ]; then
+    echo "❌ tag $TAG exists at ${EXISTING:0:7}, but these binaries came from ${COMMIT:0:7}" >&2
+    exit 1
+  fi
+  echo "   tag $TAG already at ${COMMIT:0:7}"
+else
+  git -C "$CLI_REPO" tag -a "$TAG" "$COMMIT" -m "boost-cli $VERSION"
+  git -C "$CLI_REPO" push -q origin "$TAG"
+  echo "   tagged boost-sync-cli $TAG at ${COMMIT:0:7}"
+fi
 echo ""
 echo "📝 Commit the formula only - no binaries go into the repo any more:"
 echo "     git add Formula/boost-cli.rb"
