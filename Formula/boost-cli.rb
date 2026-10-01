@@ -1,22 +1,22 @@
 class BoostCli < Formula
   desc "CLI tool for syncing Boost Commerce templates with your local development environment"
   homepage "https://github.com/alex-brankin/boost-cli"
-  version "1.23.0"
+  version "1.24.0"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/alex-brankin/homebrew-boost-cli/releases/download/v1.23.0/boost-cli-macos-arm64"
-      sha256 "f4a7dee2f30e17de78a7d867cb6b6779b06e6a847525f10feab49bf2c41b6b19"
+      url "https://github.com/alex-brankin/homebrew-boost-cli/releases/download/v1.24.0/boost-cli-macos-arm64"
+      sha256 "df397e0eac3ee4d71cbaffe5c402601021a17522005f560d03bf43445f6ccb6f"
     else
-      url "https://github.com/alex-brankin/homebrew-boost-cli/releases/download/v1.23.0/boost-cli-macos-x64"
-      sha256 "dff869164672f9d87da4a321ac370c83711c3987496a2fd7a96f4d9f539c2e84"
+      url "https://github.com/alex-brankin/homebrew-boost-cli/releases/download/v1.24.0/boost-cli-macos-x64"
+      sha256 "554a005a6f6953da37e9e9bbe3d969632df5a61596d3df19cdd5eb02008eb5b8"
     end
   end
 
   on_linux do
-    url "https://github.com/alex-brankin/homebrew-boost-cli/releases/download/v1.23.0/boost-cli-linux-x64"
-    sha256 "e319b3ee621e72c71d09ba192abf5d030cb09d2a7c7c7a87ba753973e84806ab"
+    url "https://github.com/alex-brankin/homebrew-boost-cli/releases/download/v1.24.0/boost-cli-linux-x64"
+    sha256 "afb5abf55a5e078da3a366ea39749ac0f7f44633810ecc39e6705e52a841a1c2"
   end
 
   def install
@@ -32,6 +32,6 @@ class BoostCli < Formula
   end
 
   test do
-    assert_match "1.23.0", shell_output("#{bin}/boost-cli --version")
+    assert_match "1.24.0", shell_output("#{bin}/boost-cli --version")
   end
 end
