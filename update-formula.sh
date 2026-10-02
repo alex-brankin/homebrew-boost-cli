@@ -71,6 +71,23 @@ node "$SCRIPT_DIR/../boost-sync-cli/scripts/check-release-stamp.js" "$VERSION" "
 # binaries came from 836e611, several commits later.
 CLI_REPO="$SCRIPT_DIR/../boost-sync-cli"
 COMMIT=$(node -p "require('$DIST/release-check-pass.json').commit")
+
+# A tag that already names ANOTHER commit is a refusal, and it must come
+# before anything is published: this check used to run at the very end, after
+# the GitHub release had been created and every asset uploaded, so a collision
+# was found with the release already public and the formula regenerated.
+if EXISTING_TAG=$(git -C "$CLI_REPO" rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null); then
+  if [ "$EXISTING_TAG" != "$COMMIT" ]; then
+    echo "❌ tag $TAG exists at ${EXISTING_TAG:0:7}, but these binaries came from ${COMMIT:0:7} - nothing was published" >&2
+    exit 1
+  fi
+fi
+
+# The formula's licence is the CLI's own, read from its package.json, so the
+# two cannot drift (the formula said MIT while package.json said ISC).
+LICENSE=$(node -p "require('$CLI_REPO/package.json').license")
+[ -n "$LICENSE" ] && [ "$LICENSE" != "undefined" ] || { echo "❌ no license in $CLI_REPO/package.json"; exit 1; }
+
 PREV_TAG=$(git -C "$CLI_REPO" describe --tags --abbrev=0 --match 'v*' "$COMMIT^" 2>/dev/null || true)
 NOTES_FILE=$(mktemp)
 if [ -n "$PREV_TAG" ]; then
@@ -159,9 +176,9 @@ LINUX_SHA=$(sync_asset boost-cli-linux-x64)
 cat > "$FORMULA" <<FORMULA_EOF
 class BoostCli < Formula
   desc "CLI tool for syncing Boost Commerce templates with your local development environment"
-  homepage "https://github.com/alex-brankin/boost-cli"
+  homepage "https://github.com/$TAP_REPO"
   version "$VERSION"
-  license "MIT"
+  license "$LICENSE"
 
   on_macos do
     if Hardware::CPU.arm?
@@ -203,6 +220,8 @@ echo "✅ Formula regenerated for $TAG, pointing at release assets"
 
 # Tag the CLI repo at the commit that shipped, so the last good release is one
 # ref away when a roll-forward is needed (CLAUDE.md, "Undoing a bad release").
+# A tag at another commit was refused before anything was published (above);
+# this re-checks in case one appeared during the upload.
 if EXISTING=$(git -C "$CLI_REPO" rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null); then
   if [ "$EXISTING" != "$COMMIT" ]; then
     echo "❌ tag $TAG exists at ${EXISTING:0:7}, but these binaries came from ${COMMIT:0:7}" >&2
