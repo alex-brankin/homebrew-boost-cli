@@ -1,8 +1,8 @@
 class BoostCli < Formula
   desc "CLI tool for syncing Boost Commerce templates with your local development environment"
-  homepage "https://github.com/alex-brankin/boost-cli"
+  homepage "https://github.com/alex-brankin/homebrew-boost-cli"
   version "1.30.0"
-  license "MIT"
+  license "ISC"
 
   on_macos do
     if Hardware::CPU.arm?
