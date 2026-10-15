@@ -89,14 +89,14 @@ LICENSE=$(node -p "require('$CLI_REPO/package.json').license")
 
 # What `brew install` prints after installing: the tap is public and licences
 # are by invitation, so a public installer is told what boost-cli does and
-# where to ask - from the CLI's own lib/licence-contact.js, so the two cannot
+# where to ask - from the CLI's own lib/runtime/licence-contact.js, so the two cannot
 # drift. Each line is indented for Ruby's heredoc.
 CAVEATS=$(node -e "
-const c = require('$CLI_REPO/lib/licence-contact.js');
+const c = require('$CLI_REPO/lib/runtime/licence-contact.js');
 const lines = ['boost-cli is licensed by invitation. To use it, email ' + c.CONTACT, 'and say what you would use it for.', '', 'What it does:', ...c.USE_CASES.map((u) => '  - ' + u), '', 'boost-cli doctor and boost-cli start run without a licence.'];
 process.stdout.write(lines.map((l) => (l ? '      ' + l : '')).join('\\n'));
 ")
-[ -n "$CAVEATS" ] || { echo "❌ could not read $CLI_REPO/lib/licence-contact.js"; exit 1; }
+[ -n "$CAVEATS" ] || { echo "❌ could not read $CLI_REPO/lib/runtime/licence-contact.js"; exit 1; }
 [ -n "$LICENSE" ] && [ "$LICENSE" != "undefined" ] || { echo "❌ no license in $CLI_REPO/package.json"; exit 1; }
 
 PREV_TAG=$(git -C "$CLI_REPO" describe --tags --abbrev=0 --match 'v*' "$COMMIT^" 2>/dev/null || true)
