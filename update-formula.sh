@@ -142,11 +142,30 @@ fi
 # the asset as GitHub serves it, so it has to be fetched regardless. Verifying
 # first and uploading only on a mismatch removes the redundant upload while
 # keeping the byte-level check that catches a truncated upload.
+# The asset as GitHub serves it: to anyone (curl, as `brew install` fetches
+# it) while the tap is public; while it is private (2026-10-19), to the
+# owner's own gh login - nobody else can read it, and a plain download answers
+# 404, whose sha256 is the empty string's.
+TAP_PRIVATE=0
+[ "$(gh repo view "$TAP_REPO" --json visibility -q .visibility 2>/dev/null)" = "PRIVATE" ] && TAP_PRIVATE=1
+served_sha() {
+  local f="$1"
+  if [ "$TAP_PRIVATE" = 1 ]; then
+    local d
+    d=$(mktemp -d)
+    gh release download "$TAG" --repo "$TAP_REPO" --pattern "$f" --dir "$d" --clobber >/dev/null 2>&1 || true
+    [ -f "$d/$f" ] && shasum -a 256 "$d/$f" | cut -d' ' -f1
+    rm -rf "$d"
+  else
+    curl -fsSL "$BASE_URL/$f" 2>/dev/null | shasum -a 256 | cut -d' ' -f1 || true
+  fi
+}
+
 sync_asset() {
   local f="$1"
   local local_sha remote_sha
   local_sha=$(shasum -a 256 "$STAGING/$f" | cut -d' ' -f1)
-  remote_sha=$(curl -fsSL "$BASE_URL/$f" 2>/dev/null | shasum -a 256 | cut -d' ' -f1 || true)
+  remote_sha=$(served_sha "$f")
 
   if [ "$local_sha" = "$remote_sha" ]; then
     echo "   = $f  already published, unchanged" >&2
@@ -160,7 +179,7 @@ sync_asset() {
     # over propagation lag.
     remote_sha=""
     for attempt in 1 2 3 4 5 6; do
-      remote_sha=$(curl -fsSL "$BASE_URL/$f" 2>/dev/null | shasum -a 256 | cut -d' ' -f1 || true)
+      remote_sha=$(served_sha "$f")
       [ "$local_sha" = "$remote_sha" ] && break
       echo "   … $f  not served yet (attempt $attempt), waiting" >&2
       sleep $((attempt * 10))
