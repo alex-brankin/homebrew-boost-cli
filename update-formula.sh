@@ -66,6 +66,11 @@ for f in "${BINARIES[@]}"; do PUBLISH+=("$DIST/$f"); done
 [ -f "$DIST/boost-cli-win-x64.exe" ] && PUBLISH+=("$DIST/boost-cli-win-x64.exe")
 node "$SCRIPT_DIR/../boost-sync-cli/scripts/check-release-stamp.js" "$VERSION" "${PUBLISH[@]}" || exit 1
 
+# The tap only ever moves forward: every user's tap is a git clone that
+# brew update rebases onto main, and a rewritten, force-pushed history left a
+# user's install stuck on conflict markers (2026-11-03).
+node "$SCRIPT_DIR/../boost-sync-cli/scripts/check-tap-history.js" "$SCRIPT_DIR" || exit 1
+
 # The commit release:check passed - the one these binaries were built from.
 # NOT the "chore: release" commit: 1.17.11's bump was b44c8b2 while its
 # binaries came from 836e611, several commits later.
@@ -273,4 +278,4 @@ echo ""
 echo "📝 Commit the formula only - no binaries go into the repo any more:"
 echo "     git add Formula/boost-cli.rb"
 echo "     git commit -m 'Release $VERSION'"
-echo "     git push origin main"
+echo "     git push origin main      (never --force: users' taps are clones of main)"
