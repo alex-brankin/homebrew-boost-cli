@@ -1,0 +1,24 @@
+# The publish script's own checks, with GitHub stubbed: no network, nothing
+# published (update-formula.sh is never run here - it publishes).
+name: Test
+
+on:
+  push:
+    branches: [main]
+    paths: ['update-formula.sh', 'lib/**', 'test/**', '.github/workflows/test.yml']
+  pull_request:
+    paths: ['update-formula.sh', 'lib/**', 'test/**', '.github/workflows/test.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: release assets, stubbed
+    runs-on: macos-14
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: bash test/release-assets.test.sh
+      - run: brew install shellcheck && shellcheck -x update-formula.sh lib/release-assets.sh test/release-assets.test.sh

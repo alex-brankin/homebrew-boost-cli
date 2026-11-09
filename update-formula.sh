@@ -136,71 +136,17 @@ else
   echo "   release exists"
 fi
 
-# Upload only what is actually missing or different.
-#
-# `gh release upload --clobber` re-pushes every asset unconditionally. That is
-# ~215MB across four targets, and a re-run after an interruption re-sends all of
-# it to replace bytes that are already correct - a release retry took over 20
-# minutes doing nothing useful.
-#
-# The download below is NOT the waste: the formula's checksums must come from
-# the asset as GitHub serves it, so it has to be fetched regardless. Verifying
-# first and uploading only on a mismatch removes the redundant upload while
-# keeping the byte-level check that catches a truncated upload.
-# The asset as GitHub serves it: to anyone (curl, as `brew install` fetches
-# it) while the tap is public; while it is private (2026-10-19), to the
-# owner's own gh login - nobody else can read it, and a plain download answers
-# 404, whose sha256 is the empty string's.
+# Upload only what is actually missing or different, judged by the digest
+# GitHub records for each asset (lib/release-assets.sh): `--clobber` re-pushes
+# every asset unconditionally (~215MB; a retry once took 20 minutes), and a
+# check that downloaded first re-uploaded a file GitHub already held when its
+# downloads came back empty (2026-11-09). A new upload is then waited for
+# until it is served as `brew install` fetches it: while the tap is public, to
+# anyone (curl); while private (2026-10-19), to the owner's own gh login.
 TAP_PRIVATE=0
 [ "$(gh repo view "$TAP_REPO" --json visibility -q .visibility 2>/dev/null)" = "PRIVATE" ] && TAP_PRIVATE=1
-served_sha() {
-  local f="$1"
-  if [ "$TAP_PRIVATE" = 1 ]; then
-    local d
-    d=$(mktemp -d)
-    gh release download "$TAG" --repo "$TAP_REPO" --pattern "$f" --dir "$d" --clobber >/dev/null 2>&1 || true
-    [ -f "$d/$f" ] && shasum -a 256 "$d/$f" | cut -d' ' -f1
-    rm -rf "$d"
-  else
-    curl -fsSL "$BASE_URL/$f" 2>/dev/null | shasum -a 256 | cut -d' ' -f1 || true
-  fi
-}
-
-sync_asset() {
-  local f="$1"
-  local local_sha remote_sha
-  local_sha=$(shasum -a 256 "$STAGING/$f" | cut -d' ' -f1)
-  remote_sha=$(served_sha "$f")
-
-  if [ "$local_sha" = "$remote_sha" ]; then
-    echo "   = $f  already published, unchanged" >&2
-  else
-    echo "   ↑ $f  uploading…" >&2
-    gh release upload "$TAG" "$STAGING/$f" --repo "$TAP_REPO" --clobber >/dev/null
-
-    # GitHub reports state=uploaded before the download URL actually serves the
-    # asset - verifying immediately gets a 404, whose sha256 is the hash of an
-    # empty string (e3b0c442…). Retry with backoff rather than failing a release
-    # over propagation lag.
-    remote_sha=""
-    for attempt in 1 2 3 4 5 6; do
-      remote_sha=$(served_sha "$f")
-      [ "$local_sha" = "$remote_sha" ] && break
-      echo "   … $f  not served yet (attempt $attempt), waiting" >&2
-      sleep $((attempt * 10))
-    done
-
-    if [ "$local_sha" != "$remote_sha" ]; then
-      echo "❌ $f: published asset does not match the local file after upload" >&2
-      echo "     local  $local_sha" >&2
-      echo "     remote ${remote_sha:-<download failed>}" >&2
-      exit 1
-    fi
-    echo "   ✓ $f  uploaded and verified" >&2
-  fi
-
-  printf '%s' "$local_sha"
-}
+# shellcheck source=lib/release-assets.sh
+source "$SCRIPT_DIR/lib/release-assets.sh"
 
 # macOS ships bash 3.2 - no associative arrays. Do not "tidy" into a hash.
 ARM64_SHA=$(sync_asset boost-cli-macos-arm64)
